@@ -4,11 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Wapply - Nouveau mot de passe</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, #16427D 0%, #1a5da6 100%);
       min-height: 100vh;
       display: flex;
       align-items: center;
@@ -24,13 +25,13 @@
       box-shadow: 0 20px 60px rgba(0,0,0,0.3);
     }
     .logo { text-align: center; margin-bottom: 24px; }
-    .logo h1 { font-size: 28px; color: #667eea; font-weight: 800; }
+    .logo h1 { font-size: 28px; color: #16427D; font-weight: 800; }
     .logo p { color: #666; margin-top: 8px; font-size: 15px; }
     .form-group { margin-bottom: 20px; }
     label { display: block; font-size: 14px; font-weight: 600; color: #333; margin-bottom: 6px; }
     input { width: 100%; padding: 14px 16px; border: 2px solid #e0e0e0; border-radius: 12px; font-size: 16px; transition: border-color 0.2s; outline: none; -webkit-appearance: none; }
-    input:focus { border-color: #667eea; }
-    .btn { width: 100%; padding: 16px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; -webkit-appearance: none; }
+    input:focus { border-color: #16427D; }
+    .btn { width: 100%; padding: 16px; background: #16427D; color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; -webkit-appearance: none; }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .error { background: #fff0f0; color: #d32f2f; padding: 12px 16px; border-radius: 10px; font-size: 14px; margin-bottom: 16px; display: none; }
     .success { text-align: center; display: none; }
@@ -44,7 +45,8 @@
     .rules { font-size: 12px; color: #999; margin-top: 4px; }
     .spinner { display: inline-block; width: 20px; height: 20px; border: 3px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.6s linear infinite; vertical-align: middle; margin-right: 8px; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .loading { text-align: center; padding: 20px; color: #666; }
+    .loading { text-align: center; padding: 40px 20px; color: #666; font-size: 15px; }
+    .loading .spinner-big { display: inline-block; width: 40px; height: 40px; border: 4px solid #e0e0e0; border-top-color: #16427D; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 16px; }
   </style>
 </head>
 <body>
@@ -53,7 +55,10 @@
       <h1>Wapply</h1>
       <p>Choisissez votre nouveau mot de passe</p>
     </div>
-    <div id="loading-section" class="loading">Chargement...</div>
+    <div id="loading-section" class="loading">
+      <div class="spinner-big"></div>
+      <p>Verification du lien...</p>
+    </div>
     <div id="form-section" style="display:none;">
       <div id="error-msg" class="error"></div>
       <form id="reset-form">
@@ -81,9 +86,10 @@
     </div>
   </div>
   <script>
-    var SUPABASE_URL = 'https://lmryicdpputfqqyazbuk.supabase.co';
-    var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxtcnlpY2RwcHV0ZnFxeWF6YnVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU4NDg1MTUsImV4cCI6MjA2MTQyNDUxNX0.0k_ZMqlIneNWueai03FKY_ebankv8Eq3pFum8peTano';
-    var accessToken = null;
+    var supabase = window.supabase.createClient(
+      'https://lmryicdpputfqqyazbuk.supabase.co',
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxtcnlpY2RwcHV0ZnFxeWF6YnVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU4NDg1MTUsImV4cCI6MjA2MTQyNDUxNX0.0k_ZMqlIneNWueai03FKY_ebankv8Eq3pFum8peTano'
+    );
 
     function showExpired() {
       document.getElementById('loading-section').style.display = 'none';
@@ -96,46 +102,60 @@
       document.getElementById('form-section').style.display = 'block';
     }
 
-    (function init() {
-      // Support both old implicit flow (#access_token=) and new PKCE flow (?token_hash=)
-      var hashParams = new URLSearchParams(window.location.hash.substring(1));
-      var queryParams = new URLSearchParams(window.location.search);
+    // Supabase JS v2 auto-detects hash params (#access_token=) and query params (?code=)
+    // and handles both implicit and PKCE flows automatically
+    (async function init() {
+      try {
+        // Let Supabase JS process the URL (handles both #access_token and ?code)
+        var hashParams = new URLSearchParams(window.location.hash.substring(1));
+        var queryParams = new URLSearchParams(window.location.search);
 
-      var oldAccessToken = hashParams.get('access_token');
-      var oldType = hashParams.get('type');
-      var tokenHash = queryParams.get('token_hash');
-      var queryType = queryParams.get('type');
+        var hasHash = hashParams.get('access_token') && hashParams.get('type') === 'recovery';
+        var hasCode = queryParams.get('code');
 
-      if (oldAccessToken && oldType === 'recovery') {
-        // Old implicit flow — use access_token directly
-        accessToken = oldAccessToken;
-        showForm();
-      } else if (tokenHash && queryType === 'recovery') {
-        // New PKCE flow — exchange token_hash for access_token
-        fetch(SUPABASE_URL + '/auth/v1/verify', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': SUPABASE_ANON_KEY
-          },
-          body: JSON.stringify({ token_hash: tokenHash, type: 'recovery' })
-        })
-        .then(function(res) { return res.json(); })
-        .then(function(data) {
-          if (data.access_token) {
-            accessToken = data.access_token;
-            showForm();
-          } else {
+        if (!hasHash && !hasCode) {
+          showExpired();
+          return;
+        }
+
+        // If we have a code (PKCE flow), exchange it
+        if (hasCode) {
+          var result = await supabase.auth.exchangeCodeForSession(hasCode);
+          if (result.error) {
+            console.error('Code exchange error:', result.error);
             showExpired();
+            return;
           }
-        })
-        .catch(function() { showExpired(); });
-      } else {
+          showForm();
+          return;
+        }
+
+        // If we have hash params (implicit flow), set session manually
+        if (hasHash) {
+          var accessToken = hashParams.get('access_token');
+          var refreshToken = hashParams.get('refresh_token');
+          if (accessToken && refreshToken) {
+            var result = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken
+            });
+            if (result.error) {
+              showExpired();
+              return;
+            }
+          }
+          showForm();
+          return;
+        }
+
+        showExpired();
+      } catch (err) {
+        console.error('Init error:', err);
         showExpired();
       }
     })();
 
-    document.getElementById('reset-form').addEventListener('submit', function(e) {
+    document.getElementById('reset-form').addEventListener('submit', async function(e) {
       e.preventDefault();
       var pwd = document.getElementById('password').value;
       var confirmVal = document.getElementById('confirm').value;
@@ -157,30 +177,19 @@
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner"></span> Modification...';
 
-      fetch(SUPABASE_URL + '/auth/v1/user', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': 'Bearer ' + accessToken
-        },
-        body: JSON.stringify({ password: pwd })
-      })
-      .then(function(res) {
-        if (!res.ok) {
-          return res.json().then(function(data) {
-            throw new Error(data.msg || data.error_description || 'Erreur serveur');
-          });
+      try {
+        var result = await supabase.auth.updateUser({ password: pwd });
+        if (result.error) {
+          throw result.error;
         }
         document.getElementById('form-section').style.display = 'none';
         document.getElementById('success-section').style.display = 'block';
-      })
-      .catch(function(err) {
+      } catch (err) {
         errEl.textContent = err.message || 'Une erreur est survenue.';
         errEl.style.display = 'block';
         btn.disabled = false;
         btn.textContent = 'Modifier mon mot de passe';
-      });
+      }
     });
   </script>
 </body>
