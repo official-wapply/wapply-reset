@@ -44,6 +44,7 @@
     .rules { font-size: 12px; color: #999; margin-top: 4px; }
     .spinner { display: inline-block; width: 20px; height: 20px; border: 3px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.6s linear infinite; vertical-align: middle; margin-right: 8px; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    .loading { text-align: center; padding: 20px; color: #666; }
   </style>
 </head>
 <body>
@@ -52,7 +53,8 @@
       <h1>Wapply</h1>
       <p>Choisissez votre nouveau mot de passe</p>
     </div>
-    <div id="form-section">
+    <div id="loading-section" class="loading">Chargement...</div>
+    <div id="form-section" style="display:none;">
       <div id="error-msg" class="error"></div>
       <form id="reset-form">
         <div class="form-group">
@@ -83,14 +85,53 @@
     var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxtcnlpY2RwcHV0ZnFxeWF6YnVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU4NDg1MTUsImV4cCI6MjA2MTQyNDUxNX0.0k_ZMqlIneNWueai03FKY_ebankv8Eq3pFum8peTano';
     var accessToken = null;
 
+    function showExpired() {
+      document.getElementById('loading-section').style.display = 'none';
+      document.getElementById('form-section').style.display = 'none';
+      document.getElementById('expired-section').style.display = 'block';
+    }
+
+    function showForm() {
+      document.getElementById('loading-section').style.display = 'none';
+      document.getElementById('form-section').style.display = 'block';
+    }
+
     (function init() {
-      var hash = window.location.hash.substring(1);
-      var params = new URLSearchParams(hash);
-      accessToken = params.get('access_token');
-      var type = params.get('type');
-      if (!accessToken || type !== 'recovery') {
-        document.getElementById('form-section').style.display = 'none';
-        document.getElementById('expired-section').style.display = 'block';
+      // Support both old implicit flow (#access_token=) and new PKCE flow (?token_hash=)
+      var hashParams = new URLSearchParams(window.location.hash.substring(1));
+      var queryParams = new URLSearchParams(window.location.search);
+
+      var oldAccessToken = hashParams.get('access_token');
+      var oldType = hashParams.get('type');
+      var tokenHash = queryParams.get('token_hash');
+      var queryType = queryParams.get('type');
+
+      if (oldAccessToken && oldType === 'recovery') {
+        // Old implicit flow — use access_token directly
+        accessToken = oldAccessToken;
+        showForm();
+      } else if (tokenHash && queryType === 'recovery') {
+        // New PKCE flow — exchange token_hash for access_token
+        fetch(SUPABASE_URL + '/auth/v1/verify', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': SUPABASE_ANON_KEY
+          },
+          body: JSON.stringify({ token_hash: tokenHash, type: 'recovery' })
+        })
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          if (data.access_token) {
+            accessToken = data.access_token;
+            showForm();
+          } else {
+            showExpired();
+          }
+        })
+        .catch(function() { showExpired(); });
+      } else {
+        showExpired();
       }
     })();
 
